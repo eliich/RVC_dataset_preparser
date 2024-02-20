@@ -33,7 +33,7 @@ def select_folder():
                 times = parse_srt_file(srt_path)
                 
                 # Check for corresponding media file with the same base name but different extensions.
-                for ext in ['.mp4', '.mkv', '.avi']:  # Add other video formats as needed
+                for ext in ['.mp4', '.mkv', '.avi', '.mp3', '.wav']:  # Add other video formats as needed
                     media_path = os.path.join(folder_path, base_name + ext)
                     if os.path.exists(media_path):
                         # Normalize the path to ensure consistent backslashes on Windows.
