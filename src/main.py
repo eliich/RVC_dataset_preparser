@@ -1,19 +1,27 @@
 import tkinter as tk
-from tkinter import filedialog
+from tkinter import filedialog, ttk
 import os
 import pysrt
 from moviepy.editor import AudioFileClip
 import tempfile
 import shutil
+import pygame
+
+# Initialize pygame mixer
+pygame.mixer.init()
+
+# Global variables
+audio_segments = []
+current_segment_index = 0
+selected_segments = []
+action_history = []
 
 def create_temp_subdir(subdir_name="RVC_dataset_preparser"):
-    # Creates a subdirectory within the system's temp directory
     temp_dir = os.path.join(tempfile.gettempdir(), subdir_name)
     os.makedirs(temp_dir, exist_ok=True)
     return temp_dir
 
 def cleanup_temp_subdir(subdir_path):
-    # Deletes the specified temporary subdirectory and its contents
     if os.path.exists(subdir_path):
         shutil.rmtree(subdir_path)
         print(f"Cleaned up temporary directory: {subdir_path}")
@@ -21,54 +29,118 @@ def cleanup_temp_subdir(subdir_path):
         print("Temporary directory does not exist. No cleanup needed.")
 
 def segment_media_files(folder_path, temp_dir):
-    for file in os.listdir(folder_path):
-        if file.endswith(('.mp4', '.mp3', '.wav')):
-            media_file_path = os.path.join(folder_path, file)
-            srt_file_path = os.path.splitext(media_file_path)[0] + '.srt'
+    global audio_segments
+    audio_segments = []
+    files_to_process = [file for file in os.listdir(folder_path) if file.endswith(('.mp4', '.mp3', '.wav'))]
+    
+    progress_var.set(0)  # Reset progress bar
+    # Assuming an average number of segments for progress calculation
+    estimated_total_segments = sum([len(pysrt.open(os.path.splitext(os.path.join(folder_path, file))[0] + '.srt'))
+                                    for file in files_to_process if os.path.exists(os.path.splitext(os.path.join(folder_path, file))[0] + '.srt')])
+    progress_step = 100 / estimated_total_segments if estimated_total_segments else 0
+    progress_bar['maximum'] = 100  # Set the progress bar's maximum to 100
+    
+    for file in files_to_process:
+        media_file_path = os.path.join(folder_path, file)
+        srt_file_path = os.path.splitext(media_file_path)[0] + '.srt'
 
-            if os.path.exists(srt_file_path):
-                subs = pysrt.open(srt_file_path)
-                with AudioFileClip(media_file_path) as audio_clip:
-                    duration = audio_clip.duration  # Get the duration of the media file
+        if os.path.exists(srt_file_path):
+            subs = pysrt.open(srt_file_path)
+            with AudioFileClip(media_file_path) as audio_clip:
+                for index, sub in enumerate(subs, start=1):
+                    start_time = sub.start.ordinal / 1000
+                    end_time = min(sub.end.ordinal / 1000, audio_clip.duration)  # Adjust end time if it exceeds the clip's duration
+                    
+                    segment = audio_clip.subclip(start_time, end_time)
+                    output_file_path = os.path.join(temp_dir, f"{os.path.splitext(file)[0]}_segment_{index}.mp3")
+                    segment.write_audiofile(output_file_path, codec='mp3')
+                    audio_segments.append(output_file_path)
+                    print(f"Segment {index} saved: {output_file_path}")
+                    
+                    progress_var.set(progress_var.get() + progress_step)  # Update progress
+                    root.update_idletasks()
+    play_next_segment()
 
-                    for index, sub in enumerate(subs, start=1):
-                        start_time = sub.start.hours * 3600 + sub.start.minutes * 60 + sub.start.seconds + sub.start.milliseconds / 1000
-                        end_time = sub.end.hours * 3600 + sub.end.minutes * 60 + sub.end.seconds + sub.end.milliseconds / 1000
+def play_next_segment():
+    global current_segment_index
+    if current_segment_index < len(audio_segments):
+        pygame.mixer.music.load(audio_segments[current_segment_index])
+        pygame.mixer.music.play(-1)
+        if current_segment_index not in action_history:
+            action_history.append(current_segment_index)
+    else:
+        print("No more segments to play.")
 
-                        # Ensure the end_time does not exceed the media file's duration
-                        end_time = min(end_time, duration)
+def toggle_playback():
+    if pygame.mixer.music.get_busy():
+        pygame.mixer.music.pause()
+    else:
+        pygame.mixer.music.unpause()
 
-                        # Skip segments that start after the media file ends
-                        if start_time >= duration:
-                            continue
+def save_and_next():
+    global current_segment_index
+    if current_segment_index < len(audio_segments):
+        selected_segments.append(audio_segments[current_segment_index])
+        print(f"Saved: {audio_segments[current_segment_index]}")
+        current_segment_index += 1
+        play_next_segment()
+    else:
+        print("No more segments to save and play.")
 
-                        segment = audio_clip.subclip(start_time, end_time)
-                        output_file_path = os.path.join(temp_dir, f"{os.path.splitext(file)[0]}_segment_{index}.mp3")
-                        segment.write_audiofile(output_file_path, codec='mp3')
-                        print(f"Segment {index} saved: {output_file_path}")
+def skip_and_next():
+    global current_segment_index
+    if current_segment_index < len(audio_segments) - 1:
+        current_segment_index += 1
+        play_next_segment()
+    else:
+        print("No more segments to skip and play.")
+
+def redo_last_action():
+    global current_segment_index
+    if action_history:
+        if len(action_history) > 1:
+            last_action_index = action_history.pop()  # Remove the last action
+            current_segment_index = action_history[-1]  # Revert to the previous index
+            if audio_segments[current_segment_index] in selected_segments:
+                selected_segments.remove(audio_segments[current_segment_index])
+                print(f"Removed: {audio_segments[current_segment_index]}")
+        play_next_segment()
+    else:
+        print("No previous action to redo.")
 
 def select_folder():
-    # Opens a dialog for folder selection and processes the selected folder
+    global current_segment_index, action_history
+    current_segment_index = 0
+    action_history = []
     folder_path = filedialog.askdirectory()
     if folder_path:
         print("Selected folder:", folder_path)
-        temp_dir = create_temp_subdir()  # Create or get the temp subdir path
+        temp_dir = create_temp_subdir()
         segment_media_files(folder_path, temp_dir)
         print(f"All segments saved to: {temp_dir}")
-        # You can call cleanup_temp_subdir(temp_dir) here or at another appropriate time
     else:
         print("No folder was selected.")
 
-# Create the main window
 root = tk.Tk()
 root.title("Folder Selection and Media Segmentation")
 
-# Create a button for selecting folders and segmenting media
 select_folder_button = tk.Button(root, text="Select Folder and Segment Media", command=select_folder)
 select_folder_button.pack(pady=20)
 
-# Start the Tkinter event loop
-root.mainloop()
+progress_var = tk.DoubleVar()
+progress_bar = ttk.Progressbar(root, length=300, variable=progress_var, mode='determinate')
+progress_bar.pack(pady=20)
 
-# Example of calling the cleanup function on app close or after successful dataset parsing:
-# cleanup_temp_subdir(create_temp_subdir())
+playback_button = tk.Button(root, text="Toggle Playback", command=toggle_playback)
+playback_button.pack(pady=20)
+
+save_and_next_button = tk.Button(root, text="Save and Play Next", command=save_and_next)
+save_and_next_button.pack(pady=20)
+
+skip_and_next_button = tk.Button(root, text="Skip and Play Next", command=skip_and_next)
+skip_and_next_button.pack(pady=20)
+
+redo_button = tk.Button(root, text="Redo Last Action", command=redo_last_action)
+redo_button.pack(pady=20)
+
+root.mainloop()

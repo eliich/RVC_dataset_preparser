@@ -7,5 +7,6 @@ setup(
     install_requires=[
         'moviepy==1.0.3',
         'pysrt==1.1.2',
+        'pygame==2.5.2',
     ],
 )
