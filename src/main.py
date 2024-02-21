@@ -14,7 +14,8 @@ class SubtitleProcessor:
     def run(self):
         self.clear_temp_directory()
         self.process_folder()
-        self.display_results()
+        # self.display_results()  # This line has been commented out
+        return self.video_subtitles  # Returning the list of video subtitles
 
     def clear_temp_directory(self):
         temp_dir = os.path.join(tempfile.gettempdir(), "RVC_dataset_preparser")
@@ -67,11 +68,9 @@ class SubtitleProcessor:
         else:
             clip = VideoFileClip(media_path).audio
     
-        # Ensure the end_sec does not exceed the clip's duration
-        end_sec = min(end_sec, clip.duration)
+        end_sec = min(end_sec, clip.duration)  # Ensure the end_sec does not exceed the clip's duration
     
-        # Extract the subclip based on adjusted start and end times
-        subclip = clip.subclip(start_sec, end_sec)
+        subclip = clip.subclip(start_sec, end_sec)  # Extract the subclip based on adjusted start and end times
     
         temp_dir = os.path.join(tempfile.gettempdir(), "RVC_dataset_preparser")
         os.makedirs(temp_dir, exist_ok=True)
@@ -79,8 +78,7 @@ class SubtitleProcessor:
         unique_file_name = f"{os.path.basename(media_path).split('.')[0]}_{start.replace(':', '-').replace(',', '-')}_to_{end.replace(':', '-').replace(',', '-')}.wav"
         temp_audio_path = os.path.join(temp_dir, unique_file_name)
     
-        # Write the subclip to a .wav file
-        subclip.write_audiofile(temp_audio_path, codec='pcm_s16le')
+        subclip.write_audiofile(temp_audio_path, codec='pcm_s16le')  # Write the subclip to a .wav file
     
         return temp_audio_path
 
@@ -94,6 +92,7 @@ class SubtitleProcessor:
         milliseconds = int(milliseconds)
         return 3600 * hours + 60 * minutes + seconds + milliseconds / 1000.0
 
+    # The display_results method is still here, but not called in run()
     def display_results(self):
         for subtitle in self.video_subtitles:
             print(subtitle)
@@ -102,7 +101,8 @@ def select_folder():
     folder_path = filedialog.askdirectory()
     if folder_path:
         processor = SubtitleProcessor(folder_path)
-        processor.run()
+        video_subtitles = processor.run()  # Capture the returned list
+        print(video_subtitles)  # The list is printed here as intended
     else:
         print("No folder was selected.")
 
