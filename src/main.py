@@ -4,6 +4,7 @@ import os
 import re
 from moviepy.editor import VideoFileClip, AudioFileClip
 import tempfile
+import shutil
 
 class SubtitleProcessor:
     def __init__(self, folder_path):
@@ -11,8 +12,15 @@ class SubtitleProcessor:
         self.video_subtitles = []
 
     def run(self):
+        self.clear_temp_directory()
         self.process_folder()
         self.display_results()
+
+    def clear_temp_directory(self):
+        temp_dir = os.path.join(tempfile.gettempdir(), "RVC_dataset_preparser")
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)
+        os.makedirs(temp_dir, exist_ok=True)  # Recreate the directory for this run's files
 
     def process_folder(self):
         for file in os.listdir(self.folder_path):
@@ -53,20 +61,27 @@ class SubtitleProcessor:
     def segment_audio(self, start, end, media_path, is_audio):
         start_sec = SubtitleProcessor.timecode_to_seconds(start)
         end_sec = SubtitleProcessor.timecode_to_seconds(end)
-        
+    
         if is_audio:
-            clip = AudioFileClip(media_path).subclip(start_sec, end_sec)
+            clip = AudioFileClip(media_path)
         else:
-            clip = VideoFileClip(media_path).subclip(start_sec, end_sec).audio
-        
+            clip = VideoFileClip(media_path).audio
+    
+        # Ensure the end_sec does not exceed the clip's duration
+        end_sec = min(end_sec, clip.duration)
+    
+        # Extract the subclip based on adjusted start and end times
+        subclip = clip.subclip(start_sec, end_sec)
+    
         temp_dir = os.path.join(tempfile.gettempdir(), "RVC_dataset_preparser")
         os.makedirs(temp_dir, exist_ok=True)
-        
+    
         unique_file_name = f"{os.path.basename(media_path).split('.')[0]}_{start.replace(':', '-').replace(',', '-')}_to_{end.replace(':', '-').replace(',', '-')}.wav"
         temp_audio_path = os.path.join(temp_dir, unique_file_name)
-        
-        clip.write_audiofile(temp_audio_path, codec='pcm_s16le')
-        
+    
+        # Write the subclip to a .wav file
+        subclip.write_audiofile(temp_audio_path, codec='pcm_s16le')
+    
         return temp_audio_path
 
     @staticmethod
