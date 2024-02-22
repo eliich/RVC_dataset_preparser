@@ -92,6 +92,8 @@ class SubtitleProcessor:
         milliseconds = int(milliseconds)
         return 3600 * hours + 60 * minutes + seconds + milliseconds / 1000.0
 
+global root
+
 def select_folder():
     folder_path = filedialog.askdirectory()
     if folder_path:
@@ -114,6 +116,9 @@ def stop_audio():
     pygame.mixer.music.stop()
 
 def setup_gui_for_audio_control(video_subtitles):
+    for widget in root.winfo_children():
+        widget.destroy()  # Clear the window before adding new elements
+
     current_index = [0]  # Using list for mutability in nested function
     saved_segments = []
     action_history = []  # Track actions and their indices for redo functionality
@@ -152,15 +157,10 @@ def setup_gui_for_audio_control(video_subtitles):
         else:
             pygame.mixer.music.unpause()
 
-    root = tk.Tk()
-    root.title("Audio Segment Processor")
-
     tk.Button(root, text="Skip", command=skip).pack(pady=5)
     tk.Button(root, text="Add & Skip", command=add_and_skip).pack(pady=5)
     tk.Button(root, text="Redo Last Choice", command=redo_last_choice).pack(pady=5)
     tk.Button(root, text="Pause/Resume", command=pause_resume).pack(pady=5)
-
-    root.mainloop()
 
 def main():
     global root
