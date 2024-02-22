@@ -57,11 +57,25 @@ class SubtitleProcessor:
     def process_media_file(self, media_path, times):
         file_ext = os.path.splitext(media_path)[1].lower()
         is_audio = file_ext in ['.mp3', '.wav']
+        if is_audio:
+            clip = AudioFileClip(media_path)
+        else:
+            clip = VideoFileClip(media_path)
+
+        clip_duration = clip.duration  # Correctly access duration for both video and audio
+
         for start, end in times:
-            audio_segment_path = self.segment_audio(start, end, media_path, is_audio=is_audio)
+            start_sec = SubtitleProcessor.timecode_to_seconds(start)
+            end_sec = SubtitleProcessor.timecode_to_seconds(end)
+            end_sec = min(end_sec, clip_duration)  # Ensure end_sec does not exceed clip duration
+
+            # Update end time to fit within video length
+            adjusted_end = SubtitleProcessor.seconds_to_timecode(end_sec)
+
+            audio_segment_path = self.segment_audio(start, adjusted_end, media_path, is_audio=is_audio)
             self.video_subtitles.append({
                 "start_time": start,
-                "end_time": end,
+                "end_time": adjusted_end,  # Use adjusted end time
                 "media_path": media_path,
                 "audio_segment_path": audio_segment_path
             })
@@ -107,6 +121,15 @@ class SubtitleProcessor:
         seconds = int(seconds)
         milliseconds = int(milliseconds)
         return 3600 * hours + 60 * minutes + seconds + milliseconds / 1000.0
+
+    @staticmethod
+    def seconds_to_timecode(seconds):
+        hours = int(seconds // 3600)
+        minutes = int((seconds % 3600) // 60)
+        seconds_remainder = seconds % 60
+        milliseconds = int((seconds_remainder - int(seconds_remainder)) * 1000)
+        seconds_final = int(seconds_remainder)
+        return f"{hours:02}:{minutes:02}:{seconds_final:02},{milliseconds:03}"
 
 def concatenate_and_save_segments(saved_segments):
     time_ranges_by_path = {}
