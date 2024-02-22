@@ -25,7 +25,6 @@ class SubtitleProcessor:
         pygame.mixer.music.stop()
         if hasattr(pygame.mixer.music, 'unload'):
             pygame.mixer.music.unload()
-
         temp_dir = os.path.join(tempfile.gettempdir(), "RVC_dataset_preparser")
         if os.path.exists(temp_dir):
             shutil.rmtree(temp_dir)
@@ -49,7 +48,6 @@ class SubtitleProcessor:
         srt_path = os.path.join(self.folder_path, file_name)
         base_name = os.path.splitext(file_name)[0]
         times = self.parse_srt_file(srt_path)
-
         for media_ext in ['.mp4', '.mkv', '.avi', '.mp3', '.wav']:
             media_path = os.path.join(self.folder_path, base_name + media_ext)
             if os.path.exists(media_path):
@@ -71,27 +69,19 @@ class SubtitleProcessor:
     def segment_audio(self, start, end, media_path, is_audio):
         start_sec = SubtitleProcessor.timecode_to_seconds(start)
         end_sec = SubtitleProcessor.timecode_to_seconds(end)
-
         if is_audio:
             clip = AudioFileClip(media_path)
         else:
             clip = VideoFileClip(media_path).audio
-
         end_sec = min(end_sec, clip.duration)
-
         subclip = clip.subclip(start_sec, end_sec)
-
         temp_dir = os.path.join(tempfile.gettempdir(), "RVC_dataset_preparser")
         os.makedirs(temp_dir, exist_ok=True)
-
         unique_file_name = f"{os.path.basename(media_path).split('.')[0]}_{start.replace(':', '-').replace(',', '-')}_to_{end.replace(':', '-').replace(',', '-')}.wav"
         temp_audio_path = os.path.join(temp_dir, unique_file_name)
-
         subclip.write_audiofile(temp_audio_path, codec='pcm_s16le')
-
         self.processed_segments += 1
         self.update_progress()
-
         return temp_audio_path
 
     def update_progress(self):
@@ -123,12 +113,10 @@ global root
 def select_folder():
     folder_path = filedialog.askdirectory()
     if folder_path:
-        # Initialize progress bar and label
         progress_label = tk.Label(root, text="Processing...", anchor='w')
         progress_label.pack(fill=tk.X, padx=10, pady=5)
         progress = ttk.Progressbar(root, orient=tk.HORIZONTAL, length=100, mode='determinate')
         progress.pack(fill=tk.X, padx=10, pady=5)
-        
         processor = SubtitleProcessor(folder_path, progress, progress_label)
         video_subtitles = processor.run()
         if video_subtitles:
@@ -137,7 +125,6 @@ def select_folder():
             setup_gui_for_audio_control(video_subtitles)
         else:
             print("No audio segments were processed.")
-        # Remove progress bar and label after processing
         progress_label.pack_forget()
         progress.pack_forget()
     else:
@@ -145,7 +132,7 @@ def select_folder():
 
 def play_audio_segment(path):
     pygame.mixer.music.load(path)
-    pygame.mixer.music.play(-1)  # Loop indefinitely
+    pygame.mixer.music.play(-1)
 
 def stop_audio():
     pygame.mixer.music.stop()
@@ -175,16 +162,24 @@ def setup_gui_for_audio_control(video_subtitles):
             current_index[0] += 1
             play_audio_segment(video_subtitles[current_index[0]]['audio_segment_path'])
             update_current_position_label()
+        else:
+            # Added log message for end of list
+            print("\nAll segments processed. Here are the processed segments:")
+            log_saved_segments()
 
     def add_and_skip():
         if current_index[0] < len(video_subtitles):
             saved_segments.append(video_subtitles[current_index[0]])
             action_history.append(('add_and_skip', current_index[0]))
             current_index[0] += 1
-            log_saved_segments()
-            update_current_position_label()
             if current_index[0] < len(video_subtitles):
                 play_audio_segment(video_subtitles[current_index[0]]['audio_segment_path'])
+            update_current_position_label()
+            log_saved_segments()
+        if current_index[0] >= len(video_subtitles):
+            # Added log message for end of list and saved segments
+            print("\nAll segments processed. Here are the saved segments:")
+            log_saved_segments()
 
     def redo_last_choice():
         if action_history:
@@ -229,11 +224,10 @@ def main():
     global root
     root = tk.Tk()
     root.title("Subtitle Processor")
-    root.geometry('300x275')  # Adjust the window size as needed
+    root.geometry('300x275')
     select_folder_button = tk.Button(root, text="Select Folder", command=select_folder)
     select_folder_button.pack(fill=tk.X, padx=10, pady=20)
     root.mainloop()
 
 if __name__ == "__main__":
     main()
-
