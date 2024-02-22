@@ -18,6 +18,11 @@ class SubtitleProcessor:
         return self.video_subtitles
 
     def clear_temp_directory(self):
+        # Ensure pygame mixer is stopped and unloaded to release any audio files
+        pygame.mixer.music.stop()
+        if hasattr(pygame.mixer.music, 'unload'):  # Check if 'unload' is available (pygame 2.0.0+)
+            pygame.mixer.music.unload()
+
         temp_dir = os.path.join(tempfile.gettempdir(), "RVC_dataset_preparser")
         if os.path.exists(temp_dir):
             shutil.rmtree(temp_dir)
@@ -62,24 +67,24 @@ class SubtitleProcessor:
     def segment_audio(self, start, end, media_path, is_audio):
         start_sec = SubtitleProcessor.timecode_to_seconds(start)
         end_sec = SubtitleProcessor.timecode_to_seconds(end)
-    
+
         if is_audio:
             clip = AudioFileClip(media_path)
         else:
             clip = VideoFileClip(media_path).audio
-    
+
         end_sec = min(end_sec, clip.duration)
-    
+
         subclip = clip.subclip(start_sec, end_sec)
-    
+
         temp_dir = os.path.join(tempfile.gettempdir(), "RVC_dataset_preparser")
         os.makedirs(temp_dir, exist_ok=True)
-    
+
         unique_file_name = f"{os.path.basename(media_path).split('.')[0]}_{start.replace(':', '-').replace(',', '-')}_to_{end.replace(':', '-').replace(',', '-')}.wav"
         temp_audio_path = os.path.join(temp_dir, unique_file_name)
-    
+
         subclip.write_audiofile(temp_audio_path, codec='pcm_s16le')
-    
+
         return temp_audio_path
 
     @staticmethod
@@ -123,12 +128,10 @@ def setup_gui_for_audio_control(video_subtitles):
     saved_segments = []
     action_history = []
 
-    # Define a label for displaying the current position
     position_label = tk.Label(root, text=f"Current Position: {current_index[0]+1}/{len(video_subtitles)}")
     position_label.pack(pady=5)
 
     def update_current_position_label():
-        # Update the label text to reflect the current index and total segments
         position_label.config(text=f"Current Position: {current_index[0]+1}/{len(video_subtitles)}")
 
     def log_saved_segments():
@@ -158,14 +161,13 @@ def setup_gui_for_audio_control(video_subtitles):
             last_action, index = action_history.pop()
             if last_action == 'skip':
                 current_index[0] = index
-                play_audio_segment(video_subtitles[current_index[0]]['audio_segment_path'])
             elif last_action == 'add_and_skip':
                 if saved_segments and video_subtitles[index] in saved_segments:
                     saved_segments.remove(video_subtitles[index])
-                    log_saved_segments()
                 current_index[0] = index
-                play_audio_segment(video_subtitles[current_index[0]]['audio_segment_path'])
+            play_audio_segment(video_subtitles[current_index[0]]['audio_segment_path'])
             update_current_position_label()
+            log_saved_segments()
 
     def pause_resume():
         if pygame.mixer.music.get_busy():
@@ -173,14 +175,16 @@ def setup_gui_for_audio_control(video_subtitles):
         else:
             pygame.mixer.music.unpause()
 
+    def restart():
+        select_folder()
+
     tk.Button(root, text="Skip", command=skip).pack(pady=5)
     tk.Button(root, text="Add & Skip", command=add_and_skip).pack(pady=5)
     tk.Button(root, text="Redo Last Choice", command=redo_last_choice).pack(pady=5)
     tk.Button(root, text="Pause/Resume", command=pause_resume).pack(pady=5)
+    tk.Button(root, text="Select Folder", command=restart).pack(pady=20)
 
-    # Initially update the current position label
     update_current_position_label()
-
 
 def main():
     global root
