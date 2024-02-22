@@ -2,7 +2,7 @@ import tkinter as tk
 from tkinter import filedialog, ttk
 import os
 import re
-from moviepy.editor import VideoFileClip, AudioFileClip
+from moviepy.editor import VideoFileClip, AudioFileClip, concatenate_audioclips
 import tempfile
 import shutil
 import pygame
@@ -108,6 +108,44 @@ class SubtitleProcessor:
         milliseconds = int(milliseconds)
         return 3600 * hours + 60 * minutes + seconds + milliseconds / 1000.0
 
+def concatenate_and_save_segments(saved_segments):
+    # Dictionary to hold the smallest start and largest end time for each media path
+    time_ranges_by_path = {}
+
+    # Determine the smallest start time and the largest end time for each media path
+    for segment in saved_segments:
+        media_path = segment['media_path']
+        start_time = SubtitleProcessor.timecode_to_seconds(segment['start_time'])
+        end_time = SubtitleProcessor.timecode_to_seconds(segment['end_time'])
+        
+        if media_path not in time_ranges_by_path:
+            time_ranges_by_path[media_path] = [start_time, end_time]
+        else:
+            # Update the smallest start time and largest end time if necessary
+            time_ranges_by_path[media_path][0] = min(time_ranges_by_path[media_path][0], start_time)
+            time_ranges_by_path[media_path][1] = max(time_ranges_by_path[media_path][1], end_time)
+
+    # Process each media file to extract and save the continuous audio segment
+    for media_path, (start_time, end_time) in time_ranges_by_path.items():
+        file_ext = os.path.splitext(media_path)[1].lower()
+        is_audio = file_ext in ['.mp3', '.wav']
+        
+        if is_audio:
+            clip = AudioFileClip(media_path)
+        else:
+            clip = VideoFileClip(media_path).audio
+        
+        # Extract the continuous segment
+        continuous_clip = clip.subclip(start_time, end_time)
+        
+        # Define the output path
+        output_filename = os.path.basename(media_path).split('.')[0] + "_continuous.wav"
+        output_path = os.path.join(os.path.dirname(media_path), output_filename)
+        
+        # Save the continuous audio segment
+        continuous_clip.write_audiofile(output_path, codec='pcm_s16le')
+        print(f"Saved continuous audio to: {output_path}")
+
 global root
 
 def select_folder():
@@ -152,9 +190,8 @@ def setup_gui_for_audio_control(video_subtitles):
         position_label.config(text=f"Current Position: {current_index[0]+1}/{len(video_subtitles)}")
 
     def log_saved_segments():
-        print("Saved Segments' Audio Paths:")
-        for segment in saved_segments:
-            print(segment['audio_segment_path'])
+        # Future placeholder for enhanced logging or actions
+        pass
 
     def skip():
         if current_index[0] + 1 < len(video_subtitles):
@@ -163,9 +200,7 @@ def setup_gui_for_audio_control(video_subtitles):
             play_audio_segment(video_subtitles[current_index[0]]['audio_segment_path'])
             update_current_position_label()
         else:
-            # Added log message for end of list
-            print("\nAll segments processed. Here are the processed segments:")
-            log_saved_segments()
+            concatenate_and_save_segments(saved_segments)
 
     def add_and_skip():
         if current_index[0] < len(video_subtitles):
@@ -175,11 +210,8 @@ def setup_gui_for_audio_control(video_subtitles):
             if current_index[0] < len(video_subtitles):
                 play_audio_segment(video_subtitles[current_index[0]]['audio_segment_path'])
             update_current_position_label()
-            log_saved_segments()
         if current_index[0] >= len(video_subtitles):
-            # Added log message for end of list and saved segments
-            print("\nAll segments processed. Here are the saved segments:")
-            log_saved_segments()
+            concatenate_and_save_segments(saved_segments)
 
     def redo_last_choice():
         if action_history:
@@ -192,7 +224,6 @@ def setup_gui_for_audio_control(video_subtitles):
                 current_index[0] = index
             play_audio_segment(video_subtitles[current_index[0]]['audio_segment_path'])
             update_current_position_label()
-            log_saved_segments()
 
     def pause_resume():
         if pygame.mixer.music.get_busy():
