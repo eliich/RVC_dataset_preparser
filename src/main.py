@@ -123,6 +123,14 @@ def setup_gui_for_audio_control(video_subtitles):
     saved_segments = []
     action_history = []
 
+    # Define a label for displaying the current position
+    position_label = tk.Label(root, text=f"Current Position: {current_index[0]+1}/{len(video_subtitles)}")
+    position_label.pack(pady=5)
+
+    def update_current_position_label():
+        # Update the label text to reflect the current index and total segments
+        position_label.config(text=f"Current Position: {current_index[0]+1}/{len(video_subtitles)}")
+
     def log_saved_segments():
         print("Saved Segments' Audio Paths:")
         for segment in saved_segments:
@@ -133,6 +141,7 @@ def setup_gui_for_audio_control(video_subtitles):
             action_history.append(('skip', current_index[0]))
             current_index[0] += 1
             play_audio_segment(video_subtitles[current_index[0]]['audio_segment_path'])
+            update_current_position_label()
 
     def add_and_skip():
         if current_index[0] < len(video_subtitles):
@@ -140,6 +149,7 @@ def setup_gui_for_audio_control(video_subtitles):
             action_history.append(('add_and_skip', current_index[0]))
             current_index[0] += 1
             log_saved_segments()
+            update_current_position_label()
             if current_index[0] < len(video_subtitles):
                 play_audio_segment(video_subtitles[current_index[0]]['audio_segment_path'])
 
@@ -155,6 +165,7 @@ def setup_gui_for_audio_control(video_subtitles):
                     log_saved_segments()
                 current_index[0] = index
                 play_audio_segment(video_subtitles[current_index[0]]['audio_segment_path'])
+            update_current_position_label()
 
     def pause_resume():
         if pygame.mixer.music.get_busy():
@@ -166,6 +177,10 @@ def setup_gui_for_audio_control(video_subtitles):
     tk.Button(root, text="Add & Skip", command=add_and_skip).pack(pady=5)
     tk.Button(root, text="Redo Last Choice", command=redo_last_choice).pack(pady=5)
     tk.Button(root, text="Pause/Resume", command=pause_resume).pack(pady=5)
+
+    # Initially update the current position label
+    update_current_position_label()
+
 
 def main():
     global root
