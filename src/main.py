@@ -1,16 +1,20 @@
 import tkinter as tk
-from tkinter import filedialog
+from tkinter import filedialog, ttk
 import os
 import re
 from moviepy.editor import VideoFileClip, AudioFileClip
 import tempfile
 import shutil
-import pygame  # Import pygame for audio playback
+import pygame
 
 class SubtitleProcessor:
-    def __init__(self, folder_path):
+    def __init__(self, folder_path, progress_bar, progress_label):
         self.folder_path = folder_path
         self.video_subtitles = []
+        self.progress_bar = progress_bar
+        self.progress_label = progress_label
+        self.total_segments = self.calculate_total_segments()
+        self.processed_segments = 0
 
     def run(self):
         self.clear_temp_directory()
@@ -18,15 +22,23 @@ class SubtitleProcessor:
         return self.video_subtitles
 
     def clear_temp_directory(self):
-        # Ensure pygame mixer is stopped and unloaded to release any audio files
         pygame.mixer.music.stop()
-        if hasattr(pygame.mixer.music, 'unload'):  # Check if 'unload' is available (pygame 2.0.0+)
+        if hasattr(pygame.mixer.music, 'unload'):
             pygame.mixer.music.unload()
 
         temp_dir = os.path.join(tempfile.gettempdir(), "RVC_dataset_preparser")
         if os.path.exists(temp_dir):
             shutil.rmtree(temp_dir)
         os.makedirs(temp_dir, exist_ok=True)
+
+    def calculate_total_segments(self):
+        total_segments = 0
+        for file in os.listdir(self.folder_path):
+            if file.endswith(".srt"):
+                srt_path = os.path.join(self.folder_path, file)
+                times = self.parse_srt_file(srt_path)
+                total_segments += len(times)
+        return total_segments
 
     def process_folder(self):
         for file in os.listdir(self.folder_path):
@@ -56,14 +68,6 @@ class SubtitleProcessor:
                 "audio_segment_path": audio_segment_path
             })
 
-    @staticmethod
-    def parse_srt_file(srt_path):
-        pattern = re.compile(r'\d+\s+(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})')
-        with open(srt_path, 'r', encoding='utf-8') as file:
-            content = file.read()
-        times = pattern.findall(content)
-        return [(start, end) for start, end in times]
-
     def segment_audio(self, start, end, media_path, is_audio):
         start_sec = SubtitleProcessor.timecode_to_seconds(start)
         end_sec = SubtitleProcessor.timecode_to_seconds(end)
@@ -85,7 +89,24 @@ class SubtitleProcessor:
 
         subclip.write_audiofile(temp_audio_path, codec='pcm_s16le')
 
+        self.processed_segments += 1
+        self.update_progress()
+
         return temp_audio_path
+
+    def update_progress(self):
+        progress_fraction = self.processed_segments / self.total_segments
+        self.progress_bar['value'] = progress_fraction * 100
+        self.progress_label.config(text=f"Processing segment {self.processed_segments} of {self.total_segments}")
+        root.update_idletasks()
+
+    @staticmethod
+    def parse_srt_file(srt_path):
+        pattern = re.compile(r'\d+\s+(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})')
+        with open(srt_path, 'r', encoding='utf-8') as file:
+            content = file.read()
+        times = pattern.findall(content)
+        return [(start, end) for start, end in times]
 
     @staticmethod
     def timecode_to_seconds(timecode):
@@ -102,7 +123,13 @@ global root
 def select_folder():
     folder_path = filedialog.askdirectory()
     if folder_path:
-        processor = SubtitleProcessor(folder_path)
+        # Initialize progress bar and label
+        progress_label = tk.Label(root, text="Processing...", anchor='w')
+        progress_label.pack(fill=tk.X, padx=10, pady=5)
+        progress = ttk.Progressbar(root, orient=tk.HORIZONTAL, length=100, mode='determinate')
+        progress.pack(fill=tk.X, padx=10, pady=5)
+        
+        processor = SubtitleProcessor(folder_path, progress, progress_label)
         video_subtitles = processor.run()
         if video_subtitles:
             pygame.mixer.init()
@@ -110,6 +137,9 @@ def select_folder():
             setup_gui_for_audio_control(video_subtitles)
         else:
             print("No audio segments were processed.")
+        # Remove progress bar and label after processing
+        progress_label.pack_forget()
+        progress.pack_forget()
     else:
         print("No folder was selected.")
 
@@ -122,14 +152,14 @@ def stop_audio():
 
 def setup_gui_for_audio_control(video_subtitles):
     for widget in root.winfo_children():
-        widget.destroy()  # Clear the window before adding new elements
+        widget.destroy()
 
     current_index = [0]
     saved_segments = []
     action_history = []
 
-    position_label = tk.Label(root, text=f"Current Position: {current_index[0]+1}/{len(video_subtitles)}")
-    position_label.pack(pady=5)
+    position_label = tk.Label(root, text=f"Current Position: {current_index[0]+1}/{len(video_subtitles)}", anchor='w')
+    position_label.pack(fill=tk.X, padx=10, pady=5)
 
     def update_current_position_label():
         position_label.config(text=f"Current Position: {current_index[0]+1}/{len(video_subtitles)}")
@@ -178,11 +208,20 @@ def setup_gui_for_audio_control(video_subtitles):
     def restart():
         select_folder()
 
-    tk.Button(root, text="Skip", command=skip).pack(pady=5)
-    tk.Button(root, text="Add & Skip", command=add_and_skip).pack(pady=5)
-    tk.Button(root, text="Redo Last Choice", command=redo_last_choice).pack(pady=5)
-    tk.Button(root, text="Pause/Resume", command=pause_resume).pack(pady=5)
-    tk.Button(root, text="Select Folder", command=restart).pack(pady=20)
+    skip_button = tk.Button(root, text="Skip", command=skip)
+    skip_button.pack(fill=tk.X, padx=10, pady=5)
+
+    add_and_skip_button = tk.Button(root, text="Add & Skip", command=add_and_skip)
+    add_and_skip_button.pack(fill=tk.X, padx=10, pady=5)
+
+    redo_button = tk.Button(root, text="Redo Last Choice", command=redo_last_choice)
+    redo_button.pack(fill=tk.X, padx=10, pady=5)
+
+    pause_resume_button = tk.Button(root, text="Pause/Resume", command=pause_resume)
+    pause_resume_button.pack(fill=tk.X, padx=10, pady=5)
+
+    restart_button = tk.Button(root, text="Select Folder", command=restart)
+    restart_button.pack(fill=tk.X, padx=10, pady=20)
 
     update_current_position_label()
 
@@ -190,8 +229,11 @@ def main():
     global root
     root = tk.Tk()
     root.title("Subtitle Processor")
-    tk.Button(root, text="Select Folder", command=select_folder).pack(pady=20)
+    root.geometry('300x275')  # Adjust the window size as needed
+    select_folder_button = tk.Button(root, text="Select Folder", command=select_folder)
+    select_folder_button.pack(fill=tk.X, padx=10, pady=20)
     root.mainloop()
 
 if __name__ == "__main__":
     main()
+
