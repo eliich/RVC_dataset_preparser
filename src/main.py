@@ -6,7 +6,6 @@ from moviepy.editor import VideoFileClip, AudioFileClip
 import tempfile
 import shutil
 import pygame  # Import pygame for audio playback
-import os
 
 class SubtitleProcessor:
     def __init__(self, folder_path):
@@ -16,14 +15,13 @@ class SubtitleProcessor:
     def run(self):
         self.clear_temp_directory()
         self.process_folder()
-        # self.display_results()  # This line has been commented out
-        return self.video_subtitles  # Returning the list of video subtitles
+        return self.video_subtitles
 
     def clear_temp_directory(self):
         temp_dir = os.path.join(tempfile.gettempdir(), "RVC_dataset_preparser")
         if os.path.exists(temp_dir):
             shutil.rmtree(temp_dir)
-        os.makedirs(temp_dir, exist_ok=True)  # Recreate the directory for this run's files
+        os.makedirs(temp_dir, exist_ok=True)
 
     def process_folder(self):
         for file in os.listdir(self.folder_path):
@@ -70,9 +68,9 @@ class SubtitleProcessor:
         else:
             clip = VideoFileClip(media_path).audio
     
-        end_sec = min(end_sec, clip.duration)  # Ensure the end_sec does not exceed the clip's duration
+        end_sec = min(end_sec, clip.duration)
     
-        subclip = clip.subclip(start_sec, end_sec)  # Extract the subclip based on adjusted start and end times
+        subclip = clip.subclip(start_sec, end_sec)
     
         temp_dir = os.path.join(tempfile.gettempdir(), "RVC_dataset_preparser")
         os.makedirs(temp_dir, exist_ok=True)
@@ -80,7 +78,7 @@ class SubtitleProcessor:
         unique_file_name = f"{os.path.basename(media_path).split('.')[0]}_{start.replace(':', '-').replace(',', '-')}_to_{end.replace(':', '-').replace(',', '-')}.wav"
         temp_audio_path = os.path.join(temp_dir, unique_file_name)
     
-        subclip.write_audiofile(temp_audio_path, codec='pcm_s16le')  # Write the subclip to a .wav file
+        subclip.write_audiofile(temp_audio_path, codec='pcm_s16le')
     
         return temp_audio_path
 
@@ -94,23 +92,14 @@ class SubtitleProcessor:
         milliseconds = int(milliseconds)
         return 3600 * hours + 60 * minutes + seconds + milliseconds / 1000.0
 
-    # The display_results method is still here, but not called in run()
-    def display_results(self):
-        for subtitle in self.video_subtitles:
-            print(subtitle)
-
-# Additional functions for playing audio and GUI controls
 def select_folder():
     folder_path = filedialog.askdirectory()
     if folder_path:
         processor = SubtitleProcessor(folder_path)
         video_subtitles = processor.run()
         if video_subtitles:
-            # Initialize pygame mixer for audio playback
             pygame.mixer.init()
             play_audio_segment(video_subtitles[0]['audio_segment_path'])
-            
-            # Setup GUI for skip and add/skip buttons
             setup_gui_for_audio_control(video_subtitles)
         else:
             print("No audio segments were processed.")
@@ -119,61 +108,65 @@ def select_folder():
 
 def play_audio_segment(path):
     pygame.mixer.music.load(path)
-    pygame.mixer.music.play(-1)  # Play the audio in loop
+    pygame.mixer.music.play(-1)  # Loop indefinitely
 
 def stop_audio():
     pygame.mixer.music.stop()
 
 def setup_gui_for_audio_control(video_subtitles):
+    current_index = [0]  # Using list for mutability in nested function
+    saved_segments = []
+    action_history = []  # Track actions and their indices for redo functionality
+
     def skip():
-        nonlocal current_index
-        if current_index + 1 < len(video_subtitles):
-            current_index += 1
-            play_audio_segment(video_subtitles[current_index]['audio_segment_path'])
-        else:
-            print("No more audio segments.")
-            stop_audio()
+        if current_index[0] + 1 < len(video_subtitles):
+            action_history.append(('skip', current_index[0]))  # Remember skipped action
+            current_index[0] += 1
+            play_audio_segment(video_subtitles[current_index[0]]['audio_segment_path'])
 
     def add_and_skip():
-        # Add the current segment to a new list for further processing
-        saved_segments.append(video_subtitles[current_index])
-        print("Current saved segments list:", saved_segments)  # Log the entire saved_segments list
-        skip()  # Then skip to the next segment
+        if current_index[0] < len(video_subtitles):
+            saved_segments.append(video_subtitles[current_index[0]])
+            action_history.append(('add_and_skip', current_index[0]))  # Remember add and skip action
+            current_index[0] += 1
+            if current_index[0] < len(video_subtitles):
+                play_audio_segment(video_subtitles[current_index[0]]['audio_segment_path'])
+
+    def redo_last_choice():
+        if action_history:
+            last_action, index = action_history[-1]
+            if last_action == 'skip':
+                # No need to undo a skip, just replay the last skipped segment
+                current_index[0] = index
+                play_audio_segment(video_subtitles[current_index[0]]['audio_segment_path'])
+            elif last_action == 'add_and_skip':
+                # Remove the last added segment if redoing an add and skip
+                if saved_segments and video_subtitles[index] in saved_segments:
+                    saved_segments.remove(video_subtitles[index])
+                current_index[0] = index
+                play_audio_segment(video_subtitles[current_index[0]]['audio_segment_path'])
 
     def pause_resume():
-        nonlocal is_paused
-        if is_paused:
-            pygame.mixer.music.unpause()
-            is_paused = False
-            pause_resume_button.config(text="Pause")
-        else:
+        if pygame.mixer.music.get_busy():
             pygame.mixer.music.pause()
-            is_paused = True
-            pause_resume_button.config(text="Resume")
+        else:
+            pygame.mixer.music.unpause()
 
-    # Initial setup
-    current_index = 0
-    saved_segments = []
-    is_paused = False  # Keep track of the pause state
+    root = tk.Tk()
+    root.title("Audio Segment Processor")
 
-    # Create skip and add/skip buttons
-    skip_button = tk.Button(root, text="Skip", command=skip)
-    skip_button.pack(pady=5)
+    tk.Button(root, text="Skip", command=skip).pack(pady=5)
+    tk.Button(root, text="Add & Skip", command=add_and_skip).pack(pady=5)
+    tk.Button(root, text="Redo Last Choice", command=redo_last_choice).pack(pady=5)
+    tk.Button(root, text="Pause/Resume", command=pause_resume).pack(pady=5)
 
-    add_skip_button = tk.Button(root, text="Add & Skip", command=add_and_skip)
-    add_skip_button.pack(pady=5)
-
-    # Create pause/resume button
-    pause_resume_button = tk.Button(root, text="Pause", command=pause_resume)
-    pause_resume_button.pack(pady=5)
+    root.mainloop()
 
 def main():
-    global root  # Declare root as global to access it in setup_gui_for_audio_control
+    global root
     root = tk.Tk()
     root.title("Subtitle Processor")
-    
     tk.Button(root, text="Select Folder", command=select_folder).pack(pady=20)
-    
     root.mainloop()
 
 if __name__ == "__main__":
