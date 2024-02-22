@@ -2,10 +2,27 @@ import tkinter as tk
 from tkinter import filedialog, ttk
 import os
 import re
+import atexit
 from moviepy.editor import VideoFileClip, AudioFileClip, concatenate_audioclips
 import tempfile
 import shutil
 import pygame
+import time
+
+def clear_temp_directory(retry_attempts=3, delay_between_attempts=1):
+    temp_dir = os.path.join(tempfile.gettempdir(), "RVC_dataset_preparser")
+    for attempt in range(retry_attempts):
+        try:
+            if os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir)
+            os.makedirs(temp_dir, exist_ok=True)
+            break  # Exit the loop if the directory is successfully cleared
+        except PermissionError as e:
+            print(f"Attempt {attempt + 1} failed with error: {e}")
+            if attempt < retry_attempts - 1:
+                time.sleep(delay_between_attempts)  # Wait before retrying
+            else:
+                print("Failed to clear temporary directory after multiple attempts.")
 
 class SubtitleProcessor:
     def __init__(self, folder_path, progress_bar, progress_label):
@@ -15,20 +32,11 @@ class SubtitleProcessor:
         self.progress_label = progress_label
         self.total_segments = self.calculate_total_segments()
         self.processed_segments = 0
+        clear_temp_directory()  # Ensure temp directory is clear before starting
 
     def run(self):
-        self.clear_temp_directory()
         self.process_folder()
         return self.video_subtitles
-
-    def clear_temp_directory(self):
-        pygame.mixer.music.stop()
-        if hasattr(pygame.mixer.music, 'unload'):
-            pygame.mixer.music.unload()
-        temp_dir = os.path.join(tempfile.gettempdir(), "RVC_dataset_preparser")
-        if os.path.exists(temp_dir):
-            shutil.rmtree(temp_dir)
-        os.makedirs(temp_dir, exist_ok=True)
 
     def calculate_total_segments(self):
         total_segments = 0
@@ -62,20 +70,19 @@ class SubtitleProcessor:
         else:
             clip = VideoFileClip(media_path)
 
-        clip_duration = clip.duration  # Correctly access duration for both video and audio
+        clip_duration = clip.duration
 
         for start, end in times:
             start_sec = SubtitleProcessor.timecode_to_seconds(start)
             end_sec = SubtitleProcessor.timecode_to_seconds(end)
-            end_sec = min(end_sec, clip_duration)  # Ensure end_sec does not exceed clip duration
+            end_sec = min(end_sec, clip_duration)
 
-            # Update end time to fit within video length
             adjusted_end = SubtitleProcessor.seconds_to_timecode(end_sec)
 
             audio_segment_path = self.segment_audio(start, adjusted_end, media_path, is_audio=is_audio)
             self.video_subtitles.append({
                 "start_time": start,
-                "end_time": adjusted_end,  # Use adjusted end time
+                "end_time": adjusted_end,
                 "media_path": media_path,
                 "audio_segment_path": audio_segment_path
             })
@@ -149,12 +156,12 @@ def concatenate_and_save_segments(saved_segments):
     for media_path, (start_time, end_time) in time_ranges_by_path.items():
         file_ext = os.path.splitext(media_path)[1].lower()
         is_audio = file_ext in ['.mp3', '.wav']
-        
+
         if is_audio:
             clip = AudioFileClip(media_path)
         else:
             clip = VideoFileClip(media_path).audio
-        
+
         continuous_clip = clip.subclip(start_time, end_time)
         audio_clips.append(continuous_clip)
 
@@ -163,6 +170,9 @@ def concatenate_and_save_segments(saved_segments):
         output_path = os.path.join(os.path.dirname(media_path), "finalResults.wav")
         final_clip.write_audiofile(output_path, codec='pcm_s16le')
         print(f"Saved final audio to: {output_path}")
+
+    # Clear temporary directory after concatenation
+    clear_temp_directory()
 
 global root
 
@@ -212,6 +222,7 @@ def setup_gui_for_audio_control(video_subtitles):
         pass
 
     def skip():
+        stop_audio()  # Stop the currently playing audio
         if current_index[0] + 1 < len(video_subtitles):
             action_history.append(('skip', current_index[0]))
             current_index[0] += 1
@@ -221,6 +232,7 @@ def setup_gui_for_audio_control(video_subtitles):
             concatenate_and_save_segments(saved_segments)
 
     def add_and_skip():
+        stop_audio()  # Stop the currently playing audio
         if current_index[0] < len(video_subtitles):
             saved_segments.append(video_subtitles[current_index[0]])
             action_history.append(('add_and_skip', current_index[0]))
@@ -276,6 +288,10 @@ def main():
     root.geometry('300x275')
     select_folder_button = tk.Button(root, text="Select Folder", command=select_folder)
     select_folder_button.pack(fill=tk.X, padx=10, pady=20)
+
+    # Register the cleanup function to clear the temporary directory on app exit
+    atexit.register(clear_temp_directory)
+
     root.mainloop()
 
 if __name__ == "__main__":
