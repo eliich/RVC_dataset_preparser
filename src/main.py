@@ -109,23 +109,20 @@ class SubtitleProcessor:
         return 3600 * hours + 60 * minutes + seconds + milliseconds / 1000.0
 
 def concatenate_and_save_segments(saved_segments):
-    # Dictionary to hold the smallest start and largest end time for each media path
     time_ranges_by_path = {}
+    audio_clips = []
 
-    # Determine the smallest start time and the largest end time for each media path
     for segment in saved_segments:
         media_path = segment['media_path']
         start_time = SubtitleProcessor.timecode_to_seconds(segment['start_time'])
         end_time = SubtitleProcessor.timecode_to_seconds(segment['end_time'])
-        
+
         if media_path not in time_ranges_by_path:
             time_ranges_by_path[media_path] = [start_time, end_time]
         else:
-            # Update the smallest start time and largest end time if necessary
             time_ranges_by_path[media_path][0] = min(time_ranges_by_path[media_path][0], start_time)
             time_ranges_by_path[media_path][1] = max(time_ranges_by_path[media_path][1], end_time)
 
-    # Process each media file to extract and save the continuous audio segment
     for media_path, (start_time, end_time) in time_ranges_by_path.items():
         file_ext = os.path.splitext(media_path)[1].lower()
         is_audio = file_ext in ['.mp3', '.wav']
@@ -135,16 +132,14 @@ def concatenate_and_save_segments(saved_segments):
         else:
             clip = VideoFileClip(media_path).audio
         
-        # Extract the continuous segment
         continuous_clip = clip.subclip(start_time, end_time)
-        
-        # Define the output path
-        output_filename = os.path.basename(media_path).split('.')[0] + "_continuous.wav"
-        output_path = os.path.join(os.path.dirname(media_path), output_filename)
-        
-        # Save the continuous audio segment
-        continuous_clip.write_audiofile(output_path, codec='pcm_s16le')
-        print(f"Saved continuous audio to: {output_path}")
+        audio_clips.append(continuous_clip)
+
+    if audio_clips:
+        final_clip = concatenate_audioclips(audio_clips)
+        output_path = os.path.join(os.path.dirname(media_path), "finalResults.wav")
+        final_clip.write_audiofile(output_path, codec='pcm_s16le')
+        print(f"Saved final audio to: {output_path}")
 
 global root
 
