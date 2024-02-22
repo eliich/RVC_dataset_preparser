@@ -119,35 +119,40 @@ def setup_gui_for_audio_control(video_subtitles):
     for widget in root.winfo_children():
         widget.destroy()  # Clear the window before adding new elements
 
-    current_index = [0]  # Using list for mutability in nested function
+    current_index = [0]
     saved_segments = []
-    action_history = []  # Track actions and their indices for redo functionality
+    action_history = []
+
+    def log_saved_segments():
+        print("Saved Segments' Audio Paths:")
+        for segment in saved_segments:
+            print(segment['audio_segment_path'])
 
     def skip():
         if current_index[0] + 1 < len(video_subtitles):
-            action_history.append(('skip', current_index[0]))  # Remember skipped action
+            action_history.append(('skip', current_index[0]))
             current_index[0] += 1
             play_audio_segment(video_subtitles[current_index[0]]['audio_segment_path'])
 
     def add_and_skip():
         if current_index[0] < len(video_subtitles):
             saved_segments.append(video_subtitles[current_index[0]])
-            action_history.append(('add_and_skip', current_index[0]))  # Remember add and skip action
+            action_history.append(('add_and_skip', current_index[0]))
             current_index[0] += 1
+            log_saved_segments()
             if current_index[0] < len(video_subtitles):
                 play_audio_segment(video_subtitles[current_index[0]]['audio_segment_path'])
 
     def redo_last_choice():
         if action_history:
-            last_action, index = action_history[-1]
+            last_action, index = action_history.pop()
             if last_action == 'skip':
-                # No need to undo a skip, just replay the last skipped segment
                 current_index[0] = index
                 play_audio_segment(video_subtitles[current_index[0]]['audio_segment_path'])
             elif last_action == 'add_and_skip':
-                # Remove the last added segment if redoing an add and skip
                 if saved_segments and video_subtitles[index] in saved_segments:
                     saved_segments.remove(video_subtitles[index])
+                    log_saved_segments()
                 current_index[0] = index
                 play_audio_segment(video_subtitles[current_index[0]]['audio_segment_path'])
 
